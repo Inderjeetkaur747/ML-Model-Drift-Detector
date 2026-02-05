@@ -1,0 +1,12 @@
+# PyCharm
+.idea/
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual Environment
+venv/
+env/
+
+# OS
+.DS_Store
