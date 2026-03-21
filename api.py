@@ -15,7 +15,7 @@ def predict(data: InputData):
     try:
         arr = np.array(data.features)
 
-        # 🔒 Safety check
+        # Safety check
         if arr.shape[0] != 30:
             return {
                 "error": f"Expected 30 features, got {arr.shape[0]}"
