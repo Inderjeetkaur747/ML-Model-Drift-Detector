@@ -6,12 +6,17 @@ import matplotlib.pyplot as plt
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 
+# -------------------------
+# PAGE CONFIG
+# -------------------------
 st.set_page_config(page_title="🚀 ML Monitoring Dashboard", layout="wide")
-st.title("🚀 ML Model Monitoring Dashboard")
 
 # -------------------------
 # SESSION STATE INIT
 # -------------------------
+if "status" not in st.session_state:
+    st.session_state.status = "idle"  # idle, detecting_drift, retraining, done
+
 if "model_updated" not in st.session_state:
     st.session_state.model_updated = False
 
@@ -20,6 +25,18 @@ if "simulate_drift" not in st.session_state:
 
 if "drift_results" not in st.session_state:
     st.session_state.drift_results = None
+
+# -------------------------
+# TOP STATUS MESSAGE
+# -------------------------
+if st.session_state.status == "detecting_drift":
+    st.info("🔍 Running Drift Detection...")
+elif st.session_state.status == "retraining":
+    st.info("⚙️ Retraining the model...")
+elif st.session_state.status == "done":
+    st.success("✅ Last operation completed successfully!")
+
+st.title("🚀 ML Model Monitoring Dashboard")
 
 # -------------------------
 # LOAD DATA
@@ -31,7 +48,6 @@ def load_data():
     return data.sample(50000, random_state=42)
 
 data = load_data()
-
 reference_data = data.iloc[:30000]
 current_data = data.iloc[30000:].copy()
 
@@ -81,47 +97,53 @@ with st.expander("📂 Data Overview"):
 # -------------------------
 # STEP 2 & 3: DRIFT DETECTION
 # -------------------------
-if run_drift:
-    st.subheader("📊 Drift Detection Results")
+if run_drift or st.session_state.status in ["detecting_drift", "done"]:
+    st.session_state.status = "detecting_drift"
+    
     drift_dict = calculate_drift(reference_data, current_data)
     drift_df = pd.DataFrame({
         "Feature": list(drift_dict.keys()),
         "Drift Score": list(drift_dict.values())
     }).sort_values(by="Drift Score", ascending=False)
-    
     st.session_state.drift_results = drift_df
     drift_ratio = drift_df["Drift Score"].mean()
 
-    # Metric Cards
+    st.subheader("📊 Drift Detection Results")
     col1, col2, col3 = st.columns(3)
     col1.metric("📊 Total Features", len(drift_df))
     col2.metric("📉 Avg Drift Score", f"{drift_ratio:.3f}")
     col3.metric("🚨 Drifted Features", (drift_df["Drift Score"] > drift_threshold).sum())
 
-    # Decision logic
     st.subheader("🧠 Model Status")
     if drift_ratio > drift_threshold and not st.session_state.model_updated:
         st.error("🚨 Drift Detected! Model retraining required.")
         if st.button("🔄 Retrain Model"):
-            with st.spinner("Training model..."):
-                X = data.drop("Class", axis=1)
-                y = data["Class"]
-                X_train, X_test, y_train, y_test = train_test_split(
-                    X, y, test_size=0.2, random_state=42
-                )
-                model = LogisticRegression(max_iter=2000)
-                model.fit(X_train, y_train)
-                joblib.dump(model, "models/latest_model.pkl")
-                st.session_state.model_updated = True
-                st.session_state.simulate_drift = False
-                st.success("✅ Model retrained successfully!")
-                st.experimental_rerun()
-    else:
-        st.success("✅ No Significant Drift. Model is stable 🚀")
+            st.session_state.status = "retraining"
+            st.experimental_rerun()  # trigger rerun to show "retraining" status
 
-    # -------------------------
-    # STEP 4: VISUALS
-    # -------------------------
+# -------------------------
+# STEP 4: MODEL RETRAINING
+# -------------------------
+if st.session_state.status == "retraining":
+    with st.spinner("Training model..."):
+        X = data.drop("Class", axis=1)
+        y = data["Class"]
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42
+        )
+        model = LogisticRegression(max_iter=2000)
+        model.fit(X_train, y_train)
+        joblib.dump(model, "models/latest_model.pkl")
+        st.session_state.model_updated = True
+        st.session_state.simulate_drift = False
+        st.session_state.status = "done"
+        st.experimental_rerun()  # rerun to update dashboard
+
+# -------------------------
+# STEP 5: VISUALS
+# -------------------------
+if st.session_state.drift_results is not None:
+    drift_df = st.session_state.drift_results
     st.subheader("🔥 Top Drifted Features")
     st.dataframe(drift_df.head(10))
 
