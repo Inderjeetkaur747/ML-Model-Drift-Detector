@@ -7,14 +7,19 @@ from evidently.metric_preset import DataDriftPreset
 
 st.title("Data Drift Monitoring Dashboard")
 
-# Load data
-data = pd.read_csv("data/raw/creditcard.csv")
+#  Load data
+@st.cache_data
+def load_data():
+    url = "https://storage.googleapis.com/download.tensorflow.org/data/creditcard.csv"
+    return pd.read_csv(url)
+
+data = load_data()
 
 # Split data
 reference_data = data.sample(frac=0.7, random_state=42)
 current_data = data.drop(reference_data.index)
 
-# BUTTON: Simulate Drift
+#BUTTON: Simulate Drift
 if st.button(" Simulate Drift"):
     current_data["Amount"] = current_data["Amount"] * 10
     for col in current_data.columns:
@@ -26,7 +31,7 @@ if st.button(" Simulate Drift"):
 report = Report(metrics=[DataDriftPreset()])
 report.run(reference_data=reference_data, current_data=current_data)
 
-# Save JSON
+#  Save JSON
 report_dict = report.as_dict()
 
 # Extract drift summary
@@ -35,11 +40,11 @@ drifted_columns = result['number_of_drifted_columns']
 total_columns = result['number_of_columns']
 drift_ratio = drifted_columns / total_columns
 
-# Show metrics
+# # Show metrics
 st.metric("Drift Ratio", f"{drift_ratio:.2f}")
 st.metric("Drifted Columns", f"{drifted_columns}/{total_columns}")
 
-# Alert
+# # Alert
 if drift_ratio > 0.5:
     st.error(" Data Drift Detected!")
 
@@ -70,3 +75,4 @@ if drift_ratio > 0.5:
 
 else:
     st.success("No significant drift")
+
