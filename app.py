@@ -6,33 +6,58 @@ import matplotlib.pyplot as plt
 
 st.set_page_config(page_title="ML Monitoring Dashboard", layout="wide")
 
-st.title(" ML Model Monitoring Dashboard")
+st.title("🚀 ML Model Monitoring Dashboard")
 
+# -------------------------
 # LOAD DATA
-
+# -------------------------
 @st.cache_data
 def load_data():
     url = "https://storage.googleapis.com/download.tensorflow.org/data/creditcard.csv"
     data = pd.read_csv(url)
-    return data.sample(50000)
+    return data.sample(50000, random_state=42)
 
 data = load_data()
 
+# -------------------------
+# SIDEBAR CONTROLS
+# -------------------------
+st.sidebar.header("⚙️ Controls")
+
+run_drift = st.sidebar.button("🔍 Run Drift Detection")
+retrain_model = st.sidebar.button("🔄 Retrain Model")
+simulate_drift = st.sidebar.checkbox("⚠️ Simulate Drift")
+
+drift_threshold = st.sidebar.slider(
+    "📉 Drift Threshold",
+    min_value=0.01,
+    max_value=1.0,
+    value=0.2,
+    step=0.01
+)
+
+# -------------------------
+# SPLIT DATA
+# -------------------------
 reference_data = data.iloc[:30000]
 current_data = data.iloc[30000:].copy()
 
 # -------------------------
-# SIMULATE DRIFT
+# SIMULATE DRIFT (FIXED)
 # -------------------------
 if simulate_drift:
-    for col in current_data.columns:
-        if current_data[col].dtype != "object":
+    np.random.seed(42)
+    drift_cols = ["Amount", "Time"]
+
+    for col in drift_cols:
+        if col in current_data.columns:
             current_data[col] = current_data[col] * np.random.uniform(1.5, 3.0)
 
-    st.warning("⚠️ Drift Simulation Enabled")
-    
-# DRIFT FUNCTION
+    st.warning("⚠️ Drift Simulation Enabled (Amount & Time shifted)")
 
+# -------------------------
+# DRIFT FUNCTION
+# -------------------------
 def calculate_drift(reference, current):
     drift_dict = {}
 
@@ -40,55 +65,67 @@ def calculate_drift(reference, current):
         if reference[col].dtype != "object":
             ref_mean = reference[col].mean()
             curr_mean = current[col].mean()
-            drift = abs(ref_mean - curr_mean)
+
+            drift = abs(ref_mean - curr_mean) / (abs(ref_mean) + 1e-5)
             drift_dict[col] = drift
 
     return drift_dict
 
-
-# SIDEBAR CONTROLS
-
-st.sidebar.header("Controls")
-
-# simulate_drift = st.sidebar.checkbox(" Simulate Drift")
-run_drift = st.sidebar.button(" Run Drift Detection")
-retrain_model = st.sidebar.button(" Retrain Model")
-
-
-# MAIN DASHBOARD
-
+# -------------------------
+# RUN DRIFT
+# -------------------------
 if run_drift:
 
-    st.subheader(" Drift Analysis")
+    st.subheader("📊 Drift Analysis")
 
     drift_dict = calculate_drift(reference_data, current_data)
 
-    drift_values = np.array(list(drift_dict.values()))
-    drift_ratio = np.mean(drift_values) / (np.std(drift_values) + 1e-5)
-
-    col1, col2, col3 = st.columns(3)
-
-    col1.metric("Total Features", len(drift_dict))
-    col2.metric("Drift Score", f"{drift_ratio:.2f}")
-    col3.metric("Drifted Features", sum(v > 0.5 for v in drift_dict.values()))
-
-    if drift_ratio > 0.5:
-        st.error(" Data Drift Detected!")
-    else:
-        st.success(" No Significant Drift")
-
-    # Bar chart
-    st.subheader(" Feature Drift")
-
     drift_df = pd.DataFrame({
         "Feature": list(drift_dict.keys()),
-        "Drift": list(drift_dict.values())
-    }).sort_values(by="Drift", ascending=False)
+        "Drift Score": list(drift_dict.values())
+    }).sort_values(by="Drift Score", ascending=False)
+
+    drift_ratio = drift_df["Drift Score"].mean()
+
+    # -------------------------
+    # METRICS
+    # -------------------------
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric("📊 Total Features", len(drift_df))
+    col2.metric("📉 Avg Drift Score", f"{drift_ratio:.3f}")
+    col3.metric(
+        "🚨 Drifted Features",
+        (drift_df["Drift Score"] > drift_threshold).sum()
+    )
+
+    # -------------------------
+    # ALERT
+    # -------------------------
+    if drift_ratio > drift_threshold:
+        st.error("🚨 Data Drift Detected!")
+    else:
+        st.success("✅ No Significant Drift")
+
+    # -------------------------
+    # TOP DRIFTED FEATURES
+    # -------------------------
+    st.subheader("🔥 Top Drifted Features")
+
+    top_drift = drift_df.head(10)
+    st.dataframe(top_drift)
+
+    # -------------------------
+    # BAR CHART
+    # -------------------------
+    st.subheader("📈 Feature-wise Drift")
 
     st.bar_chart(drift_df.set_index("Feature"))
 
-    # Distribution comparison
-    st.subheader("Feature Distribution")
+    # -------------------------
+    # BEFORE vs AFTER GRAPH
+    # -------------------------
+    st.subheader("📊 Before vs After Distribution")
 
     feature = st.selectbox("Select Feature", drift_df["Feature"])
 
@@ -99,11 +136,12 @@ if run_drift:
 
     st.pyplot(fig)
 
-
-# RETRAIN BUTTON
-
+# -------------------------
+# RETRAIN MODEL
+# -------------------------
 if retrain_model:
-    st.subheader(" Model Retraining")
+
+    st.subheader("🔄 Model Retraining")
 
     st.info("Training model...")
 
@@ -113,23 +151,24 @@ if retrain_model:
     X = data.drop("Class", axis=1)
     y = data["Class"]
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42
+    )
 
-    model = LogisticRegression(max_iter=1000)
+    model = LogisticRegression(max_iter=2000)
     model.fit(X_train, y_train)
 
     joblib.dump(model, "models/latest_model.pkl")
 
-    st.success(" Model retrained and saved!")
+    st.success("✅ Model retrained and saved!")
 
-
+# -------------------------
 # MODEL STATUS
-
-st.sidebar.subheader(" Model Status")
+# -------------------------
+st.sidebar.subheader("🤖 Model Status")
 
 try:
     joblib.load("models/latest_model.pkl")
-    st.sidebar.success("Model Loaded ")
+    st.sidebar.success("Model Loaded ✅")
 except:
     st.sidebar.warning("Model not found")
-
