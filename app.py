@@ -5,6 +5,7 @@ import joblib
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
+import time
 
 # -------------------------
 # PAGE CONFIG
@@ -29,13 +30,15 @@ if "drift_results" not in st.session_state:
 # -------------------------
 # TOP STATUS MESSAGE
 # -------------------------
-if st.session_state.status == "detecting_drift":
-    st.info("🔍 Running Drift Detection...")
-elif st.session_state.status == "retraining":
-    st.info("⚙️ Retraining the model...")
-elif st.session_state.status == "done":
-    st.success("✅ Last operation completed successfully!")
+def show_status():
+    if st.session_state.status == "detecting_drift":
+        st.info("🔍 Running Drift Detection...")
+    elif st.session_state.status == "retraining":
+        st.info("⚙️ Retraining the model...")
+    elif st.session_state.status == "done":
+        st.success("✅ Last operation completed successfully!")
 
+show_status()
 st.title("🚀 ML Model Monitoring Dashboard")
 
 # -------------------------
@@ -119,25 +122,39 @@ if run_drift or st.session_state.status in ["detecting_drift", "done"]:
         st.error("🚨 Drift Detected! Model retraining required.")
         if st.button("🔄 Retrain Model"):
             st.session_state.status = "retraining"
-            st.experimental_rerun()  # trigger rerun to show "retraining" status
+            st.session_state.progress = 0
+            st.experimental_rerun()
 
 # -------------------------
-# STEP 4: MODEL RETRAINING
+# STEP 4: MODEL RETRAINING WITH PROGRESS BAR
 # -------------------------
 if st.session_state.status == "retraining":
-    with st.spinner("Training model..."):
-        X = data.drop("Class", axis=1)
-        y = data["Class"]
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42
-        )
-        model = LogisticRegression(max_iter=2000)
-        model.fit(X_train, y_train)
-        joblib.dump(model, "models/latest_model.pkl")
-        st.session_state.model_updated = True
-        st.session_state.simulate_drift = False
-        st.session_state.status = "done"
-        st.experimental_rerun()  # rerun to update dashboard
+    st.subheader("⚙️ Model Retraining Progress")
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    # Simulate training progress for UX
+    for i in range(101):
+        st.session_state.progress = i
+        progress_bar.progress(i)
+        status_text.text(f"Training model... {i}%")
+        time.sleep(0.02)  # simulate time
+
+    # Actual retraining
+    X = data.drop("Class", axis=1)
+    y = data["Class"]
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42
+    )
+    model = LogisticRegression(max_iter=2000)
+    model.fit(X_train, y_train)
+    joblib.dump(model, "models/latest_model.pkl")
+    
+    st.session_state.model_updated = True
+    st.session_state.simulate_drift = False
+    st.session_state.status = "done"
+    st.success("✅ Model retrained successfully!")
+    st.experimental_rerun()
 
 # -------------------------
 # STEP 5: VISUALS
