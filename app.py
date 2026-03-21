@@ -20,7 +20,7 @@ def load_data():
 data = load_data()
 
 # -------------------------
-# SIDEBAR CONTROLS
+# SIDEBAR
 # -------------------------
 st.sidebar.header("⚙️ Controls")
 
@@ -28,15 +28,11 @@ run_drift = st.sidebar.button("🔍 Run Drift Detection")
 simulate_drift = st.sidebar.checkbox("⚠️ Simulate Drift")
 
 drift_threshold = st.sidebar.slider(
-    "📉 Drift Threshold",
-    min_value=0.01,
-    max_value=1.0,
-    value=0.2,
-    step=0.01
+    "📉 Drift Threshold", 0.01, 1.0, 0.2, 0.01
 )
 
 # -------------------------
-# SPLIT DATA
+# DATA SPLIT
 # -------------------------
 reference_data = data.iloc[:30000]
 current_data = data.iloc[30000:].copy()
@@ -46,11 +42,8 @@ current_data = data.iloc[30000:].copy()
 # -------------------------
 if simulate_drift:
     np.random.seed(42)
-    drift_cols = ["Amount", "Time"]
-
-    for col in drift_cols:
-        current_data[col] = current_data[col] * np.random.uniform(1.5, 3.0)
-
+    current_data["Amount"] *= 3
+    current_data["Time"] += 50000
     st.warning("⚠️ Drift Simulation Enabled")
 
 # -------------------------
@@ -63,21 +56,17 @@ def calculate_drift(reference, current):
         if reference[col].dtype != "object":
             ref_mean = reference[col].mean()
             curr_mean = current[col].mean()
+
             drift = abs(ref_mean - curr_mean) / (abs(ref_mean) + 1e-5)
             drift_dict[col] = drift
 
     return drift_dict
 
 # -------------------------
-# MODEL STATUS PANEL
+# SESSION STATE (IMPORTANT)
 # -------------------------
-st.sidebar.subheader("🤖 Model Status")
-
-try:
-    joblib.load("models/latest_model.pkl")
-    st.sidebar.success("Model Loaded & Active ✅")
-except:
-    st.sidebar.warning("No production model found")
+if "model_updated" not in st.session_state:
+    st.session_state.model_updated = False
 
 # -------------------------
 # RUN DRIFT
@@ -95,9 +84,6 @@ if run_drift:
 
     drift_ratio = drift_df["Drift Score"].mean()
 
-    # -------------------------
-    # METRICS
-    # -------------------------
     col1, col2, col3 = st.columns(3)
 
     col1.metric("📊 Total Features", len(drift_df))
@@ -108,35 +94,55 @@ if run_drift:
     )
 
     # -------------------------
-    # APPROVAL LOGIC
+    # DECISION LOGIC
     # -------------------------
-    st.subheader("🧠 Model Validation Decision")
+    st.subheader("🧠 Model Decision")
 
-    if drift_ratio > drift_threshold:
-        st.error("🚨 Significant Drift Detected")
-        st.warning("⚠️ Model retraining is recommended before deployment.")
+    if drift_ratio > drift_threshold and not st.session_state.model_updated:
+
+        st.error("🚨 Drift Detected!")
+        st.warning("⚠️ Model retraining required")
+
+        # 🔥 SHOW BUTTON ONLY WHEN NEEDED
+        if st.button("🔄 Retrain Model"):
+
+            st.info("Training model...")
+
+            from sklearn.linear_model import LogisticRegression
+            from sklearn.model_selection import train_test_split
+
+            X = data.drop("Class", axis=1)
+            y = data["Class"]
+
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=0.2, random_state=42
+            )
+
+            model = LogisticRegression(max_iter=2000)
+            model.fit(X_train, y_train)
+
+            joblib.dump(model, "models/latest_model.pkl")
+
+            st.session_state.model_updated = True
+
+            st.success("✅ Model retrained successfully!")
+
+            st.rerun()
+
     else:
         st.success("✅ No Significant Drift")
-        st.info("Model performance is expected to remain stable. Retraining not required.")
+        st.info("Model is stable and working fine 🚀")
 
     # -------------------------
-    # TOP DRIFTED FEATURES
+    # VISUALS
     # -------------------------
     st.subheader("🔥 Top Drifted Features")
-
     st.dataframe(drift_df.head(10))
 
-    # -------------------------
-    # DRIFT CHART
-    # -------------------------
     st.subheader("📈 Feature-wise Drift")
-
     st.bar_chart(drift_df.set_index("Feature"))
 
-    # -------------------------
-    # DISTRIBUTION COMPARISON
-    # -------------------------
-    st.subheader("📊 Before vs After Distribution")
+    st.subheader("📊 Distribution Comparison")
 
     feature = st.selectbox("Select Feature", drift_df["Feature"])
 
