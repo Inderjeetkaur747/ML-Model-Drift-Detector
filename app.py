@@ -7,7 +7,7 @@ st.title(" Data Drift Monitoring Dashboard")
 
 
 # LOAD DATA (from URL)
--
+
 @st.cache_data
 def load_data():
     url = "https://storage.googleapis.com/download.tensorflow.org/data/creditcard.csv"
