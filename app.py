@@ -1,99 +1,78 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
+import json
 import joblib
-import matplotlib.pyplot as plt
+from evidently.report import Report
+from evidently.metric_preset import DataDriftPreset
 
-st.set_page_config(page_title="ML Drift Dashboard", layout="wide")
+st.title("Data Drift Monitoring Dashboard")
 
-st.title(" ML Model Monitoring Dashboard")
-
-
-# LOAD DATA
-
+#  Load data
 @st.cache_data
 def load_data():
     url = "https://storage.googleapis.com/download.tensorflow.org/data/creditcard.csv"
-    data = pd.read_csv(url)
-    return data.sample(50000)
+    return pd.read_csv(url)
 
 data = load_data()
 
-reference_data = data.iloc[:30000]
-current_data = data.iloc[30000:]
+# Split data
+reference_data = data.sample(frac=0.7, random_state=42)
+current_data = data.drop(reference_data.index)
 
+#BUTTON: Simulate Drift
+if st.button(" Simulate Drift"):
+    current_data["Amount"] = current_data["Amount"] * 10
+    for col in current_data.columns:
+        if col != "Class":
+            current_data[col] = current_data[col] * 2
+    st.success("Drift simulated!")
 
-# DRIFT CALCULATION
+# Run drift detection
+report = Report(metrics=[DataDriftPreset()])
+report.run(reference_data=reference_data, current_data=current_data)
 
-def calculate_drift(reference, current):
-    drift_dict = {}
+#  Save JSON
+report_dict = report.as_dict()
 
-    for col in reference.columns:
-        if reference[col].dtype != "object":
-            ref_mean = reference[col].mean()
-            curr_mean = current[col].mean()
-            drift = abs(ref_mean - curr_mean)
+# Extract drift summary
+result = report_dict['metrics'][0]['result']
+drifted_columns = result['number_of_drifted_columns']
+total_columns = result['number_of_columns']
+drift_ratio = drifted_columns / total_columns
 
-            drift_dict[col] = drift
+# # Show metrics
+st.metric("Drift Ratio", f"{drift_ratio:.2f}")
+st.metric("Drifted Columns", f"{drifted_columns}/{total_columns}")
 
-    return drift_dict
-
-drift_dict = calculate_drift(reference_data, current_data)
-
-# Normalize drift (for better scale)
-drift_values = np.array(list(drift_dict.values()))
-drift_ratio = np.mean(drift_values) / (np.std(drift_values) + 1e-5)
-
-
-# TOP METRICS
-
-col1, col2, col3 = st.columns(3)
-
-col1.metric(" Total Features", len(drift_dict))
-col2.metric("Avg Drift Score", f"{drift_ratio:.2f}")
-col3.metric("Drifted Features", sum(v > 0.5 for v in drift_dict.values()))
-
-
-# ALERT
-
+# # Alert
 if drift_ratio > 0.5:
-    st.error(" Data Drift Detected! Retraining Recommended")
+    st.error(" Data Drift Detected!")
+
+    # Retrain button
+    if st.button("Retrain Model"):
+        from sklearn.pipeline import Pipeline
+        from sklearn.preprocessing import StandardScaler
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.model_selection import train_test_split
+
+        X = current_data.drop("Class", axis=1)
+        y = current_data["Class"]
+
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.3, random_state=42
+        )
+
+        model = Pipeline([
+            ("scaler", StandardScaler()),
+            ("clf", LogisticRegression(max_iter=2000))
+        ])
+
+        model.fit(X_train, y_train)
+
+        joblib.dump(model, "../models/latest_model.pkl")
+
+        st.success(" Model retrained and saved!")
+
 else:
-    st.success(" No Significant Drift")
+    st.success("No significant drift")
 
-
-# DRIFT BAR CHART
-
-st.subheader(" Feature-wise Drift")
-
-drift_df = pd.DataFrame({
-    "Feature": list(drift_dict.keys()),
-    "Drift Score": list(drift_dict.values())
-}).sort_values(by="Drift Score", ascending=False)
-
-st.bar_chart(drift_df.set_index("Feature"))
-
-
-# DISTRIBUTION COMPARISON
-
-st.subheader("Feature Distribution Comparison")
-
-feature = st.selectbox("Select Feature", drift_df["Feature"].values)
-
-fig, ax = plt.subplots()
-ax.hist(reference_data[feature], bins=50, alpha=0.5, label="Reference")
-ax.hist(current_data[feature], bins=50, alpha=0.5, label="Current")
-ax.legend()
-
-st.pyplot(fig)
-
-
-# MODEL STATUS
-
-st.subheader(" Model Status")
-
-try:
-    model = joblib.load("models/latest_model.pkl")
-    st.success("Model loaded successfully ")
-except:
-    st.warning("Model not found")
