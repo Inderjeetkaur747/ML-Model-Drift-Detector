@@ -21,7 +21,14 @@ data = load_data()
 reference_data = data.iloc[:30000]
 current_data = data.iloc[30000:]
 
+#simulate drift 
 
+if simulate_drift:
+    for col in current_data.columns:
+        if current_data[col].dtype != "object":
+            current_data[col] = current_data[col] * np.random.uniform(1.5, 3.0)
+
+    st.warning("⚠️ Drift Simulation Enabled")
 # DRIFT FUNCTION
 
 def calculate_drift(reference, current):
@@ -41,6 +48,7 @@ def calculate_drift(reference, current):
 
 st.sidebar.header("Controls")
 
+# simulate_drift = st.sidebar.checkbox(" Simulate Drift")
 run_drift = st.sidebar.button(" Run Drift Detection")
 retrain_model = st.sidebar.button(" Retrain Model")
 
