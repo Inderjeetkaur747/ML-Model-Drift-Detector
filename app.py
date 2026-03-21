@@ -1,99 +1,83 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import joblib
-import matplotlib.pyplot as plt
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
 
-st.set_page_config(page_title="ML Drift Dashboard", layout="wide")
+# Evidently imports
+try:
+    from evidently.report import Report
+    from evidently.metric_preset import DataDriftPreset
+except ModuleNotFoundError:
+    st.error("Evidently is not installed. Install it via `pip install evidently` in your environment.")
+    st.stop()
 
-st.title("📊 ML Model Monitoring Dashboard")
+st.title("📊 Data Drift Monitoring Dashboard")
 
-# -------------------------
-# LOAD DATA
-# -------------------------
+# Load data
 @st.cache_data
 def load_data():
     url = "https://storage.googleapis.com/download.tensorflow.org/data/creditcard.csv"
-    data = pd.read_csv(url)
-    return data.sample(50000)
+    return pd.read_csv(url)
 
 data = load_data()
 
-reference_data = data.iloc[:30000]
-current_data = data.iloc[30000:]
+# Split data
+reference_data = data.sample(frac=0.7, random_state=42)
+current_data = data.drop(reference_data.index).copy()  # copy to avoid SettingWithCopyWarning
 
-# -------------------------
-# DRIFT CALCULATION
-# -------------------------
-def calculate_drift(reference, current):
-    drift_dict = {}
+st.subheader("Preview of Current Data")
+st.dataframe(current_data.head())
 
-    for col in reference.columns:
-        if reference[col].dtype != "object":
-            ref_mean = reference[col].mean()
-            curr_mean = current[col].mean()
-            drift = abs(ref_mean - curr_mean)
+# --- Simulate Drift ---
+if st.button("⚡ Simulate Drift"):
+    current_data["Amount"] = current_data["Amount"] * 10
+    for col in current_data.columns:
+        if col != "Class":
+            current_data[col] = current_data[col] * 2
+    st.success("✅ Drift simulated!")
 
-            drift_dict[col] = drift
+# --- Run Drift Detection ---
+st.subheader("Data Drift Detection")
+if st.button("🔍 Run Drift Detection"):
+    report = Report(metrics=[DataDriftPreset()])
+    report.run(reference_data=reference_data, current_data=current_data)
+    report_dict = report.as_dict()
 
-    return drift_dict
+    # Extract drift summary
+    result = report_dict['metrics'][0]['result']
+    drifted_columns = result['number_of_drifted_columns']
+    total_columns = result['number_of_columns']
+    drift_ratio = drifted_columns / total_columns
 
-drift_dict = calculate_drift(reference_data, current_data)
+    # Show metrics
+    st.metric("Drift Ratio", f"{drift_ratio:.2f}")
+    st.metric("Drifted Columns", f"{drifted_columns}/{total_columns}")
 
-# Normalize drift (for better scale)
-drift_values = np.array(list(drift_dict.values()))
-drift_ratio = np.mean(drift_values) / (np.std(drift_values) + 1e-5)
+    # Alert & Retrain option
+    if drift_ratio > 0.5:
+        st.error("⚠️ Data Drift Detected!")
 
-# -------------------------
-# TOP METRICS
-# -------------------------
-col1, col2, col3 = st.columns(3)
+        if st.button("🔄 Retrain Model"):
+            X = current_data.drop("Class", axis=1)
+            y = current_data["Class"]
 
-col1.metric("📊 Total Features", len(drift_dict))
-col2.metric("📉 Avg Drift Score", f"{drift_ratio:.2f}")
-col3.metric("🚨 Drifted Features", sum(v > 0.5 for v in drift_dict.values()))
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=0.3, random_state=42
+            )
 
-# -------------------------
-# ALERT
-# -------------------------
-if drift_ratio > 0.5:
-    st.error("🚨 Data Drift Detected! Retraining Recommended")
-else:
-    st.success("✅ No Significant Drift")
+            model = Pipeline([
+                ("scaler", StandardScaler()),
+                ("clf", LogisticRegression(max_iter=2000))
+            ])
 
-# -------------------------
-# DRIFT BAR CHART
-# -------------------------
-st.subheader("📈 Feature-wise Drift")
+            model.fit(X_train, y_train)
+            joblib.dump(model, "latest_model.pkl")  # Use relative path for Streamlit
 
-drift_df = pd.DataFrame({
-    "Feature": list(drift_dict.keys()),
-    "Drift Score": list(drift_dict.values())
-}).sort_values(by="Drift Score", ascending=False)
+            st.success("✅ Model retrained and saved!")
+    else:
+        st.success("🎉 No significant drift detected.")
 
-st.bar_chart(drift_df.set_index("Feature"))
-
-# -------------------------
-# DISTRIBUTION COMPARISON
-# -------------------------
-st.subheader("📊 Feature Distribution Comparison")
-
-feature = st.selectbox("Select Feature", drift_df["Feature"].values)
-
-fig, ax = plt.subplots()
-ax.hist(reference_data[feature], bins=50, alpha=0.5, label="Reference")
-ax.hist(current_data[feature], bins=50, alpha=0.5, label="Current")
-ax.legend()
-
-st.pyplot(fig)
-
-# -------------------------
-# MODEL STATUS
-# -------------------------
-st.subheader("🤖 Model Status")
-
-try:
-    model = joblib.load("models/latest_model.pkl")
-    st.success("Model loaded successfully ✅")
-except:
-    st.warning("Model not found")
+st.info("💡 Workflow: You can simulate drift → detect drift → retrain model if needed.")
