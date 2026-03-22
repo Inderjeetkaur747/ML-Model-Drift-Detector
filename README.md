@@ -42,7 +42,7 @@ Machine learning models degrade over time due to **data drift**. This project so
 
 ---
 
-## 🏗️ Project Architecture
+## Project Architecture
 
 Incoming Data
 ↓
@@ -61,7 +61,7 @@ Streamlit Dashboard
 
 ---
 
-## 📊 Dashboard Preview
+## Dashboard Preview
 
 - Drift Ratio Visualization  
 - Drifted Columns Count  
@@ -72,13 +72,13 @@ Streamlit Dashboard
 
 ## How to Run
 
-### Clone Repository
+1 Clone Repository
 ```bash
 git clone https://github.com/your-username/your-repo-name.git
 cd your-repo-name
 
 
 ---
-### Create Virtual Environment
+2 Create Virtual Environment
 python -m venv venv
 venv\Scripts\activate   # Windows
