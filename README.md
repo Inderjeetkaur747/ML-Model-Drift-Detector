@@ -6,7 +6,8 @@ This project is an end-to-end Machine Learning system designed to monitor model 
 It simulates a real-world fraud detection pipeline where incoming data distributions may change over time, affecting model accuracy.
 
 ---
-**Live App:** https://ml-model-drift-detector-dkfqsnvvgqvndre9hrcbqz.streamlit.app/
+**Live App:** https: //ml-model-drift-detector-dkfqsnvvgqvndre9hrcbqz.streamlit.app/
+**API Docs (Swagger):** http://localhost:8000/docs 
 
 ## Problem Statement
 Machine learning models degrade over time due to **data drift**. This project solves that problem by:
@@ -33,41 +34,62 @@ Machine learning models degrade over time due to **data drift**. This project so
 
 ## Features
 
-1 Data Drift Detection using Evidently AI  
-2 Drift Threshold Alert System  
-3 Automatic Model Retraining  
-4 Model Persistence (Saved Models)  
-5 Interactive Dashboard (Streamlit)  
-6 REST API for Predictions (FastAPI)  
-7 Real-time Testing using Swagger UI  
+### 1. Data Drift Detection
+- Uses **Evidently AI** for statistical drift detection (local environment)
+- Custom drift logic used in Streamlit (cloud compatibility)
 
 ---
 
-## Project Architecture
+### 2. Drift Alert System
+- Detects when drift exceeds threshold  
+- Displays alerts in dashboard  
 
+---
+
+### 3. Automated Model Retraining
+- Retrains model when drift is detected  
+- Uses Scikit-learn pipeline (Scaler + Logistic Regression)  
+- Saves updated model automatically  
+
+---
+
+### 4. Model Persistence
+- Models stored using Joblib  
+- Latest model always available for inference  
+
+---
+
+### 5. Interactive Dashboard (Streamlit)
+- Drift simulation  
+- Drift metrics visualization  
+- Retrain trigger button  
+- Real-time system feedback  
+
+---
+
+###  6. FastAPI Deployment
+- REST API for predictions  
+- JSON input → prediction output  
+- Integrated with trained model  
+
+---
+
+##  System Workflow
+
+```text
 Incoming Data
-↓
-Drift Detection (Evidently)
-↓
-Drift > Threshold?
-↓ YES
-Retrain Model
-↓
-Save Model
-↓
-Serve via FastAPI
-↓
-Streamlit Dashboard
-
-
----
-
-## Dashboard Preview
-
-- Drift Ratio Visualization  
-- Drifted Columns Count  
-- Drift Alert System  
-- Retrain Model Button  
+      ↓
+Drift Detection (Evidently / Custom)
+      ↓
+Drift Alert 🚨
+      ↓
+Model Retraining 🔄
+      ↓
+Updated Model Saved 💾
+      ↓
+Prediction via FastAPI ⚡
+      ↓
+Monitoring via Streamlit 📊
 
 ---
 
@@ -102,21 +124,22 @@ Example API input
 }
 
 
-Key Learnings
-Importance of monitoring ML models in production
-Handling imbalanced datasets (fraud detection)
-Implementing automated retraining pipelines
-Building full-stack ML systems (UI + API)
+ey Learnings
+Real-world ML monitoring systems
+Handling data drift in production
+Integrating ML with APIs (FastAPI)
+Building interactive dashboards
+Managing model lifecycle (train → save → deploy)
 
 
 Use Case
 
-This project simulates how companies monitor production ML models to ensure:
+This project simulates how companies:
 
-Model reliability
-Performance stability
-Automated retraining pipelines
-
+Monitor deployed ML models
+Detect performance degradation
+Automatically retrain models
+Serve predictions via APIs
 
 Author
 
