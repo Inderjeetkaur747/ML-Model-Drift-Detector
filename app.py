@@ -33,7 +33,7 @@ current_data = data.drop(reference_data.index).copy()
 # -------------------------
 # BUTTON: SIMULATE DRIFT
 # -------------------------
-if st.button("🚨 Simulate Drift"):
+if st.button("Simulate Drift"):
     st.session_state.drift_simulated = True
     st.session_state.model_retrained = False
 
@@ -45,7 +45,7 @@ if st.session_state.drift_simulated and not st.session_state.model_retrained:
     for col in current_data.columns:
         if col != "Class":
             current_data[col] *= 2
-    st.warning("⚠️ Drift Simulated")
+    st.warning(" Drift Simulated")
 
 # -------------------------
 # DRIFT CALCULATION
@@ -77,12 +77,12 @@ st.metric("Drifted Columns", f"{drifted_columns}/{total_columns}")
 if st.session_state.drift_simulated and not st.session_state.model_retrained:
 
     if drift_ratio > 0.5:
-        st.error("🚨 Data Drift Detected!")
+        st.error(" Data Drift Detected!")
 
         # RETRAIN BUTTON
-        if st.button("🔄 Retrain Model"):
+        if st.button(" Retrain Model"):
 
-            with st.spinner("Training model... ⏳"):
+            with st.spinner("Training model... "):
 
                 from sklearn.pipeline import Pipeline
                 from sklearn.preprocessing import StandardScaler
@@ -105,14 +105,14 @@ if st.session_state.drift_simulated and not st.session_state.model_retrained:
 
                 joblib.dump(model, "models/latest_model.pkl")
 
-                # 🔥 UPDATE STATE (NO RERUN)
+                # UPDATE STATE (NO RERUN)
                 st.session_state.model_retrained = True
 
-            st.success("✅ Model retrained successfully!")
+            st.success("Model retrained successfully!")
 
 # -------------------------
 # AFTER RETRAIN
 # -------------------------
 if st.session_state.model_retrained:
-    st.success("✅ No Significant Drift")
-    st.info("Model is now stable and working fine 🚀")
+    st.success(" No Significant Drift")
+    st.info("Model is now stable and working fine ")
