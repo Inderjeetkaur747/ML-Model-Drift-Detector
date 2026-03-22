@@ -5,40 +5,50 @@ import joblib
 
 st.title("Data Drift Monitoring Dashboard")
 
-# Load data
+# -------------------------
+# LOAD DATA
+# -------------------------
 @st.cache_data
 def load_data():
     url = "https://storage.googleapis.com/download.tensorflow.org/data/creditcard.csv"
-    return pd.read_csv(url)
+    return pd.read_csv(url).sample(20000, random_state=42)
 
 data = load_data()
 
-# Split data
-reference_data = data.sample(frac=0.7, random_state=42)
-current_data = data.drop(reference_data.index).copy()
-
 # -------------------------
-# SESSION STATE (IMPORTANT)
+# SESSION STATE
 # -------------------------
 if "drift_simulated" not in st.session_state:
     st.session_state.drift_simulated = False
 
-# -------------------------
-# BUTTON: Simulate Drift
-# -------------------------
-if st.button("Simulate Drift"):
-    st.session_state.drift_simulated = True
+if "model_retrained" not in st.session_state:
+    st.session_state.model_retrained = False
 
-# Apply drift if simulated
-if st.session_state.drift_simulated:
-    current_data["Amount"] = current_data["Amount"] * 10
+# -------------------------
+# SPLIT DATA
+# -------------------------
+reference_data = data.sample(frac=0.7, random_state=42)
+current_data = data.drop(reference_data.index).copy()
+
+# -------------------------
+# BUTTON: SIMULATE DRIFT
+# -------------------------
+if st.button("🚨 Simulate Drift"):
+    st.session_state.drift_simulated = True
+    st.session_state.model_retrained = False
+
+# -------------------------
+# APPLY DRIFT
+# -------------------------
+if st.session_state.drift_simulated and not st.session_state.model_retrained:
+    current_data["Amount"] *= 10
     for col in current_data.columns:
         if col != "Class":
-            current_data[col] = current_data[col] * 2
-    st.success("Drift simulated!")
+            current_data[col] *= 2
+    st.warning("⚠️ Drift Simulated")
 
 # -------------------------
-# CUSTOM DRIFT LOGIC (REPLACES EVIDENTLY)
+# DRIFT CALCULATION
 # -------------------------
 drifted_columns = 0
 total_columns = len(reference_data.columns)
@@ -50,7 +60,7 @@ for col in reference_data.columns:
 
         drift = abs(ref_mean - curr_mean) / (abs(ref_mean) + 1e-5)
 
-        if drift > 0.2:   # threshold per column
+        if drift > 0.2:
             drifted_columns += 1
 
 drift_ratio = drifted_columns / total_columns
@@ -62,39 +72,47 @@ st.metric("Drift Ratio", f"{drift_ratio:.2f}")
 st.metric("Drifted Columns", f"{drifted_columns}/{total_columns}")
 
 # -------------------------
-# ALERT + RETRAIN
+# UI FLOW
 # -------------------------
-if drift_ratio > 0.5:
-    st.error("Data Drift Detected!")
+if st.session_state.drift_simulated and not st.session_state.model_retrained:
 
-    if st.button("Retrain Model"):
+    if drift_ratio > 0.5:
+        st.error("🚨 Data Drift Detected!")
 
-        with st.spinner("Training model... please wait "):
+        # RETRAIN BUTTON
+        if st.button("🔄 Retrain Model"):
 
-            from sklearn.pipeline import Pipeline
-            from sklearn.preprocessing import StandardScaler
-            from sklearn.linear_model import LogisticRegression
-            from sklearn.model_selection import train_test_split
+            with st.spinner("Training model... ⏳"):
 
-            X = current_data.drop("Class", axis=1)
-            y = current_data["Class"]
+                from sklearn.pipeline import Pipeline
+                from sklearn.preprocessing import StandardScaler
+                from sklearn.linear_model import LogisticRegression
+                from sklearn.model_selection import train_test_split
 
-            X_train, X_test, y_train, y_test = train_test_split(
-                X, y, test_size=0.3, random_state=42
-            )
+                X = current_data.drop("Class", axis=1)
+                y = current_data["Class"]
 
-            model = Pipeline([
-                ("scaler", StandardScaler()),
-                ("clf", LogisticRegression(max_iter=500))  # reduced for speed
-            ])
+                X_train, X_test, y_train, y_test = train_test_split(
+                    X, y, test_size=0.3, random_state=42
+                )
 
-            model.fit(X_train, y_train)
+                model = Pipeline([
+                    ("scaler", StandardScaler()),
+                    ("clf", LogisticRegression(max_iter=500))
+                ])
 
-            joblib.dump(model, "models/latest_model.pkl")
+                model.fit(X_train, y_train)
 
-            # RESET DRIFT
-            st.session_state.drift_simulated = False
+                joblib.dump(model, "models/latest_model.pkl")
 
-        st.success("Model retrained successfully!")
+                # 🔥 UPDATE STATE (NO RERUN)
+                st.session_state.model_retrained = True
 
-        st.rerun()
+            st.success("✅ Model retrained successfully!")
+
+# -------------------------
+# AFTER RETRAIN
+# -------------------------
+if st.session_state.model_retrained:
+    st.success("✅ No Significant Drift")
+    st.info("Model is now stable and working fine 🚀")
