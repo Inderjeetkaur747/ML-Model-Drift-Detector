@@ -2,136 +2,100 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import joblib
-import matplotlib.pyplot as plt
 
-st.set_page_config(page_title="ML Monitoring Dashboard", layout="wide")
+st.title("Data Drift Monitoring Dashboard")
 
-st.title("🚀 ML Model Monitoring Dashboard")
-
-# -------------------------
-# LOAD DATA
-# -------------------------
+# Load data
 @st.cache_data
 def load_data():
     url = "https://storage.googleapis.com/download.tensorflow.org/data/creditcard.csv"
-    data = pd.read_csv(url)
-    return data.sample(50000, random_state=42)
+    return pd.read_csv(url)
 
 data = load_data()
 
-# -------------------------
-# SESSION STATE
-# -------------------------
-if "model_trained" not in st.session_state:
-    st.session_state.model_trained = False
+# Split data
+reference_data = data.sample(frac=0.7, random_state=42)
+current_data = data.drop(reference_data.index).copy()
 
 # -------------------------
-# SIDEBAR
+# SESSION STATE (IMPORTANT)
 # -------------------------
-st.sidebar.header("⚙️ Controls")
-
-run_drift = st.sidebar.button("🔍 Run Drift Detection")
-simulate_drift = st.sidebar.checkbox("⚠️ Simulate Drift")
-
-drift_threshold = st.sidebar.slider(
-    "📉 Drift Threshold", 0.01, 1.0, 0.2, 0.01
-)
+if "drift_simulated" not in st.session_state:
+    st.session_state.drift_simulated = False
 
 # -------------------------
-# DATA SPLIT
+# BUTTON: Simulate Drift
 # -------------------------
-reference_data = data.iloc[:30000]
-current_data = data.iloc[30000:].copy()
+if st.button("Simulate Drift"):
+    st.session_state.drift_simulated = True
 
-# -------------------------
-# SIMULATE DRIFT
-# -------------------------
-if simulate_drift and not st.session_state.model_trained:
-    current_data["Amount"] *= 3
-    current_data["Time"] += 50000
-    st.warning("⚠️ Drift Simulation Enabled")
-
-# -------------------------
-# DRIFT FUNCTION
-# -------------------------
-def calculate_drift(reference, current):
-    drift_scores = []
-
-    for col in reference.columns:
-        if reference[col].dtype != "object":
-            ref_mean = reference[col].mean()
-            curr_mean = current[col].mean()
-
-            drift = abs(ref_mean - curr_mean) / (abs(ref_mean) + 1e-5)
-            drift_scores.append(drift)
-
-    return np.mean(drift_scores)
+# Apply drift if simulated
+if st.session_state.drift_simulated:
+    current_data["Amount"] = current_data["Amount"] * 10
+    for col in current_data.columns:
+        if col != "Class":
+            current_data[col] = current_data[col] * 2
+    st.success("Drift simulated!")
 
 # -------------------------
-# MAIN LOGIC
+# CUSTOM DRIFT LOGIC (REPLACES EVIDENTLY)
 # -------------------------
-if run_drift:
+drifted_columns = 0
+total_columns = len(reference_data.columns)
 
-    st.subheader("📊 Drift Analysis")
+for col in reference_data.columns:
+    if col != "Class":
+        ref_mean = reference_data[col].mean()
+        curr_mean = current_data[col].mean()
 
-    drift_ratio = calculate_drift(reference_data, current_data)
+        drift = abs(ref_mean - curr_mean) / (abs(ref_mean) + 1e-5)
 
-    col1, col2 = st.columns(2)
+        if drift > 0.2:   # threshold per column
+            drifted_columns += 1
 
-    col1.metric("📊 Features", reference_data.shape[1])
-    col2.metric("📉 Drift Score", f"{drift_ratio:.3f}")
+drift_ratio = drifted_columns / total_columns
 
-    # -------------------------
-    # DECISION
-    # -------------------------
-    if drift_ratio > drift_threshold and not st.session_state.model_trained:
+# -------------------------
+# SHOW METRICS
+# -------------------------
+st.metric("Drift Ratio", f"{drift_ratio:.2f}")
+st.metric("Drifted Columns", f"{drifted_columns}/{total_columns}")
 
-        st.error("🚨 Drift Detected")
-        st.warning("⚠️ Retraining required")
+# -------------------------
+# ALERT + RETRAIN
+# -------------------------
+if drift_ratio > 0.5:
+    st.error("Data Drift Detected!")
 
-        # -------------------------
-        # RETRAIN BUTTON
-        # -------------------------
-        if st.button("🔄 Retrain Model"):
+    if st.button("Retrain Model"):
 
-            st.info("Training model...")
+        from sklearn.pipeline import Pipeline
+        from sklearn.preprocessing import StandardScaler
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.model_selection import train_test_split
 
-            from sklearn.linear_model import LogisticRegression
-            from sklearn.model_selection import train_test_split
+        X = current_data.drop("Class", axis=1)
+        y = current_data["Class"]
 
-            X = data.drop("Class", axis=1)
-            y = data["Class"]
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.3, random_state=42
+        )
 
-            X_train, X_test, y_train, y_test = train_test_split(
-                X, y, test_size=0.2, random_state=42
-            )
+        model = Pipeline([
+            ("scaler", StandardScaler()),
+            ("clf", LogisticRegression(max_iter=2000))
+        ])
 
-            model = LogisticRegression(max_iter=2000)
-            model.fit(X_train, y_train)
+        model.fit(X_train, y_train)
 
-            joblib.dump(model, "models/latest_model.pkl")
+        joblib.dump(model, "models/latest_model.pkl")  # ✅ FIXED PATH
 
-            # 🔥 KEY FIX
-            st.session_state.model_trained = True
+        #  RESET DRIFT AFTER RETRAIN
+        st.session_state.drift_simulated = False
 
-            st.success("✅ Model retrained successfully!")
+        st.success("Model retrained and drift resolved!")
 
-            st.rerun()
+        st.rerun()
 
-    else:
-        st.success("✅ No Significant Drift")
-        st.info("Model is stable and working fine 🚀")
-
-    # -------------------------
-    # VISUAL CHECK
-    # -------------------------
-    st.subheader("📊 Example Feature Distribution")
-
-    feature = "Amount"
-
-    fig, ax = plt.subplots()
-    ax.hist(reference_data[feature], bins=50, alpha=0.5, label="Reference")
-    ax.hist(current_data[feature], bins=50, alpha=0.5, label="Current")
-    ax.legend()
-
-    st.pyplot(fig)
+else:
+    st.success("No significant drift")
