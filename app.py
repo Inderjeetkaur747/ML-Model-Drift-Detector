@@ -69,33 +69,32 @@ if drift_ratio > 0.5:
 
     if st.button("Retrain Model"):
 
-        from sklearn.pipeline import Pipeline
-        from sklearn.preprocessing import StandardScaler
-        from sklearn.linear_model import LogisticRegression
-        from sklearn.model_selection import train_test_split
+        with st.spinner("Training model... please wait "):
 
-        X = current_data.drop("Class", axis=1)
-        y = current_data["Class"]
+            from sklearn.pipeline import Pipeline
+            from sklearn.preprocessing import StandardScaler
+            from sklearn.linear_model import LogisticRegression
+            from sklearn.model_selection import train_test_split
 
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.3, random_state=42
-        )
+            X = current_data.drop("Class", axis=1)
+            y = current_data["Class"]
 
-        model = Pipeline([
-            ("scaler", StandardScaler()),
-            ("clf", LogisticRegression(max_iter=2000))
-        ])
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=0.3, random_state=42
+            )
 
-        model.fit(X_train, y_train)
+            model = Pipeline([
+                ("scaler", StandardScaler()),
+                ("clf", LogisticRegression(max_iter=500))  # reduced for speed
+            ])
 
-        joblib.dump(model, "models/latest_model.pkl")  # ✅ FIXED PATH
+            model.fit(X_train, y_train)
 
-        #  RESET DRIFT AFTER RETRAIN
-        st.session_state.drift_simulated = False
+            joblib.dump(model, "models/latest_model.pkl")
 
-        st.success("Model retrained and drift resolved!")
+            # RESET DRIFT
+            st.session_state.drift_simulated = False
+
+        st.success("Model retrained successfully!")
 
         st.rerun()
-
-else:
-    st.success("No significant drift")
